@@ -50,14 +50,94 @@ const rangeSummary = document.querySelector('#rangeSummary');
 const intersectionCount = document.querySelector('#intersectionCount');
 const loadStatus = document.querySelector('#loadStatus');
 const loadDot = document.querySelector('#loadDot');
+const authScreen = document.querySelector('#authScreen');
+const loginForm = document.querySelector('#loginForm');
+const loginUser = document.querySelector('#loginUser');
+const loginPassword = document.querySelector('#loginPassword');
+const authMessage = document.querySelector('#authMessage');
+const logoutButton = document.querySelector('#logoutButton');
 let lastMapLatLng = null;
 let isPointerOverMap = false;
 let pendingCoordinateMarker = null;
 let selectedTowerIndex = null;
+let authConfig = null;
+
+document.body.classList.add('is-locked');
 
 function setStatus(message, state = 'loading') {
   loadStatus.textContent = message;
   loadDot.className = `status-dot ${state}`;
+}
+
+function setAuthMessage(message, state = 'neutral') {
+  authMessage.textContent = message;
+  authMessage.dataset.state = state;
+}
+
+function getBcrypt() {
+  return window.dcodeIO?.bcrypt;
+}
+
+async function loadAuthConfig() {
+  if (authConfig) {
+    return authConfig;
+  }
+
+  const response = await fetch('config.yaml', { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error('config.yaml não foi encontrado.');
+  }
+
+  const text = await response.text();
+  authConfig = window.jsyaml.load(text);
+  return authConfig;
+}
+
+function openSession(username, profile) {
+  sessionStorage.setItem(
+    'fireModelAuth',
+    JSON.stringify({
+      username,
+      name: profile.name || username,
+      role: profile.role || 'user',
+    })
+  );
+  document.body.classList.remove('is-locked');
+  authScreen.hidden = true;
+  map.invalidateSize();
+  setStatus(`Acesso liberado para ${profile.name || username}.`, 'ready');
+}
+
+function restoreSession() {
+  const session = sessionStorage.getItem('fireModelAuth');
+  if (!session) {
+    loginUser.focus();
+    return;
+  }
+
+  try {
+    const profile = JSON.parse(session);
+    document.body.classList.remove('is-locked');
+    authScreen.hidden = true;
+    map.invalidateSize();
+    setStatus(`Acesso liberado para ${profile.name || profile.username}.`, 'ready');
+  } catch {
+    sessionStorage.removeItem('fireModelAuth');
+    loginUser.focus();
+  }
+}
+
+async function authenticate(username, password) {
+  const config = await loadAuthConfig();
+  const profile = config?.credentials?.usernames?.[username];
+  const bcrypt = getBcrypt();
+
+  if (!profile?.password || !bcrypt) {
+    return null;
+  }
+
+  const isValid = await bcrypt.compare(password, profile.password);
+  return isValid ? profile : null;
 }
 
 function addTowerRow(values = {}) {
@@ -521,6 +601,45 @@ async function loadFarms() {
 }
 
 addTowerButton.addEventListener('click', () => addTowerRow());
+loginForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const username = loginUser.value.trim();
+  const password = loginPassword.value;
+
+  if (!username || !password) {
+    setAuthMessage('Informe usuário e senha.', 'error');
+    return;
+  }
+
+  loginForm.querySelector('button[type="submit"]').disabled = true;
+  setAuthMessage('Validando credenciais...', 'neutral');
+
+  try {
+    const profile = await authenticate(username, password);
+    if (!profile) {
+      setAuthMessage('Usuário ou senha inválidos.', 'error');
+      loginPassword.value = '';
+      loginPassword.focus();
+      return;
+    }
+
+    loginPassword.value = '';
+    openSession(username, profile);
+  } catch (error) {
+    console.error(error);
+    setAuthMessage('Não foi possível carregar o config.yaml.', 'error');
+  } finally {
+    loginForm.querySelector('button[type="submit"]').disabled = false;
+  }
+});
+logoutButton.addEventListener('click', () => {
+  sessionStorage.removeItem('fireModelAuth');
+  document.body.classList.add('is-locked');
+  authScreen.hidden = false;
+  loginPassword.value = '';
+  loginUser.focus();
+  setAuthMessage('Sessão encerrada.', 'neutral');
+});
 rangeKmInput.addEventListener('input', () => {
   updateRangeSummary();
   renderSightLines({ validate: false, fit: false });
@@ -574,3 +693,4 @@ towerForm.addEventListener('submit', (event) => {
 addTowerRow();
 updateRangeSummary();
 loadFarms();
+restoreSession();

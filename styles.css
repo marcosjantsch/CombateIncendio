@@ -30,6 +30,10 @@ body {
   font-family: Inter, "Segoe UI", Arial, sans-serif;
 }
 
+body.is-locked {
+  overflow: hidden;
+}
+
 button,
 input {
   font: inherit;
@@ -50,6 +54,64 @@ input {
     var(--panel);
   border-right: 1px solid rgba(22, 32, 38, 0.14);
   box-shadow: var(--shadow);
+}
+
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(135deg, rgba(18, 32, 38, 0.78), rgba(18, 111, 125, 0.54)),
+    url("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/5/18/11");
+  background-size: cover;
+}
+
+.auth-screen[hidden] {
+  display: none;
+}
+
+.auth-card {
+  display: grid;
+  gap: 16px;
+  width: min(420px, 100%);
+  padding: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 24px 70px rgba(4, 12, 18, 0.38);
+  backdrop-filter: blur(14px);
+}
+
+.auth-card h1 {
+  max-width: 100%;
+  font-size: 2rem;
+}
+
+.auth-message {
+  min-height: 20px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.auth-message[data-state="error"] {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.logout-button {
+  min-height: 34px;
+  margin-top: 16px;
+  border: 1px solid rgba(18, 111, 125, 0.22);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--teal);
+  cursor: pointer;
+  font-weight: 800;
 }
 
 .brand-block {
