@@ -1,0 +1,15 @@
+streamlit>=1.31
+pandas>=2.1
+geopandas>=0.14
+folium>=0.15
+streamlit-folium>=0.20
+plotly>=5.18
+requests>=2.31
+numpy>=1.26
+openpyxl>=3.1
+streamlit-authenticator>=0.2.3
+PyYAML>=6.0
+bcrypt>=4.0.1
+shapely>=2.0
+pyproj>=3.6
+fiona>=1.9

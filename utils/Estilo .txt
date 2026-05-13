@@ -1,0 +1,30 @@
+Adote no mapa um padrão visual escuro, técnico e elegante, com fundo predominantemente preto/antracite e elementos em tons de verde.
+
+Direção visual:
+- Fundo do mapa e da interface em preto, grafite ou cinza muito escuro.
+- Camadas e destaques em tons de verde, variando entre verde-limão, verde-esmeralda, verde-musgo e verde-água.
+- Evitar cores muito saturadas fora dessa paleta.
+- Visual deve lembrar painel geoespacial profissional, limpo, moderno e de alto contraste.
+
+Estilo cartográfico:
+- Polígonos principais com contorno verde vivo e preenchimento verde translúcido.
+- Polígonos secundários com variações mais suaves de verde.
+- Destaque ao passar ou clicar com verde mais claro e aumento sutil de espessura.
+- CAR e demais camadas devem manter hierarquia visual clara, sem poluição.
+- Manter boa legibilidade sobre fundo escuro.
+
+Elementos de interface:
+- Popups com fundo escuro, texto claro e títulos em verde.
+- Labels, títulos e controles com contraste alto.
+- Botões e caixas de seleção seguindo a mesma linguagem escura com acentos verdes.
+- Layer control, legenda e painéis laterais integrados ao tema escuro.
+
+Boas práticas:
+- Priorizar contraste, legibilidade e aparência profissional.
+- Usar transparência moderada para evitar mapa pesado visualmente.
+- Evitar excesso de cores diferentes.
+- Preservar funcionalidade existente; alterar apenas o visual.
+- Se já houver padrão visual no arquivo, adaptar sem quebrar a estrutura.
+
+Objetivo final:
+- Entregar um mapa com identidade visual escura, sofisticada e consistente, com fundo preto e paleta centrada em verdes.

@@ -1,0 +1,1393 @@
+import io
+import numpy as np
+import pandas as pd
+import streamlit as st
+import plotly.express as px
+
+
+def render_tab_analise(
+    df_csv,
+    tipo_dado=None,
+    selected_uf=None,
+    selected_municipio=None,
+    selected_empresa=None,
+    selected_fazenda=None,
+    start_date=None,
+    end_date=None,
+):
+    st.markdown('<div class="section-title">Análise Avançada</div>', unsafe_allow_html=True)
+
+    # =====================================================
+    # 1) VALIDAÇÕES
+    # =====================================================
+    if not st.session_state.get("aplicar", False):
+        st.info("Clique em '✅ Aplicar Filtros' na sidebar para ver a análise.")
+        return
+
+    if df_csv is None or df_csv.empty:
+        st.error("❌ Sem dados filtrados para análise.")
+        return
+
+    # =====================================================
+    # 2) NORMALIZAÇÃO
+    # =====================================================
+    df = df_csv.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    aliases = {
+        "Data": "DATA",
+        "data": "DATA",
+        "Empresa": "EMPRESA",
+        "Fazenda": "FAZENDA",
+        "Município": "MUNICIPIO",
+        "Municipio": "MUNICIPIO",
+        "PRECIP": "PRECIP_CHIRPS_MM",
+        "PRECIP_MM": "PRECIP_CHIRPS_MM",
+        "TEMP_MEDIA": "TEMP_MEDIA_C",
+        "UMID_MEDIA": "UMID_MEDIA_PCT",
+        "AREA_PORDUT": "AREA_PRODU",
+        "AREA_PRODUT": "AREA_PRODU",
+        "AREA_PRODUTIVA": "AREA_PRODU",
+    }
+    df = df.rename(columns={k: v for k, v in aliases.items() if k in df.columns})
+
+    if "DATA" not in df.columns:
+        st.error("❌ Coluna DATA não encontrada.")
+        return
+
+    def to_float_br(series: pd.Series) -> pd.Series:
+        s = series.astype(str).str.strip()
+        s = s.replace({"None": "", "nan": "", "NaN": "", "N/A": "", "-": "", "": np.nan})
+        s = s.str.replace(r"[^0-9,\.\-]+", "", regex=True)
+
+        has_dot = s.str.contains(r"\.", na=False)
+        has_comma = s.str.contains(r",", na=False)
+        both = has_dot & has_comma
+
+        s.loc[both] = s.loc[both].str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+        s.loc[has_comma & ~has_dot] = s.loc[has_comma & ~has_dot].str.replace(",", ".", regex=False)
+
+        return pd.to_numeric(s, errors="coerce")
+
+    df["DATA"] = pd.to_datetime(df["DATA"].astype(str).str.strip(), errors="coerce", dayfirst=True)
+    df = df.dropna(subset=["DATA"]).copy()
+
+    numeric_cols = [
+        "AREA_PRODU",
+        "AREA_T",
+        "PRECIP_CHIRPS_MM",
+        "TEMP_MEDIA_C",
+        "TEMP_MIN_C",
+        "TEMP_MAX_C",
+        "AMPLITUDE_TERMICA_C",
+        "UMID_MEDIA_PCT",
+        "DIAS_SEM_CHUVA",
+    ]
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = to_float_br(df[col])
+
+    meses_pt = {
+        1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
+        7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"
+    }
+
+    df["ANO"] = df["DATA"].dt.year
+    df["MES_NUM"] = df["DATA"].dt.month
+    df["MES"] = df["MES_NUM"].map(meses_pt)
+    df["MES_ANO"] = df["DATA"].dt.strftime("%m/%Y")
+
+    st.success(f"✅ Analisando {len(df)} registros no período selecionado.")
+
+    # =====================================================
+    # 3) HELPERS
+    # =====================================================
+    def df_to_excel_bytes(dataframe: pd.DataFrame, sheet_name: str) -> bytes:
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            dataframe.to_excel(writer, index=False, sheet_name=sheet_name[:31])
+        return output.getvalue()
+
+    def weighted_mean(values: pd.Series, weights: pd.Series) -> float:
+        v = pd.to_numeric(values, errors="coerce")
+        w = pd.to_numeric(weights, errors="coerce")
+        mask = v.notna() & w.notna() & (w > 0)
+        if mask.sum() == 0:
+            return float("nan")
+        return float((v[mask] * w[mask]).sum() / w[mask].sum())
+
+    def area_por_fazenda(g: pd.DataFrame) -> pd.Series:
+        if not all(c in g.columns for c in ["FAZENDA", "AREA_PRODU"]):
+            return pd.Series(dtype=float)
+        tmp = g[["FAZENDA", "AREA_PRODU"]].copy()
+        tmp["AREA_PRODU"] = pd.to_numeric(tmp["AREA_PRODU"], errors="coerce")
+        return tmp.groupby("FAZENDA", dropna=False)["AREA_PRODU"].first()
+
+    def descricao_filtro() -> str:
+        if tipo_dado == "Dados por Estado":
+            return f"Estado: {selected_uf}" if selected_uf else "Estado"
+        if tipo_dado == "Dados por Empresa":
+            return f"Empresa: {selected_empresa}" if selected_empresa else "Empresa"
+        if tipo_dado == "Dados Empresa/Fazenda":
+            if selected_empresa and selected_fazenda:
+                return f"Empresa/Fazenda: {selected_empresa} / {selected_fazenda}"
+            if selected_empresa:
+                return f"Empresa: {selected_empresa}"
+            return "Empresa/Fazenda"
+        if tipo_dado == "Dados por Município":
+            if selected_uf and selected_municipio:
+                return f"Município: {selected_municipio} / {selected_uf}"
+            if selected_municipio:
+                return f"Município: {selected_municipio}"
+            return "Município"
+        return "Todos os Dados"
+
+    filtro_desc = descricao_filtro()
+    periodo_desc = (
+        f"{start_date.strftime('%m/%Y')} a {end_date.strftime('%m/%Y')}"
+        if start_date and end_date else "-"
+    )
+
+    def titulo_grafico(base_titulo: str) -> str:
+        return f"{base_titulo} | {tipo_dado} | {filtro_desc} | Período: {periodo_desc}"
+
+    # =====================================================
+    # 4) RESUMO MENSAL
+    # =====================================================
+    def resumo_mensal_from_df(dataframe: pd.DataFrame) -> pd.DataFrame:
+        rows = []
+
+        for (ano, mes_num, mes, mes_ano), g in dataframe.groupby(
+            ["ANO", "MES_NUM", "MES", "MES_ANO"], dropna=False
+        ):
+            row = {
+                "ANO": int(ano) if pd.notna(ano) else np.nan,
+                "MES_NUM": int(mes_num) if pd.notna(mes_num) else np.nan,
+                "MES": mes,
+                "MES_ANO": mes_ano,
+            }
+
+            areas = area_por_fazenda(g)
+            areas_valid = pd.to_numeric(areas, errors="coerce").dropna()
+            areas_valid = areas_valid[areas_valid > 0]
+            row["AREA_PRODU"] = float(areas_valid.sum()) if not areas_valid.empty else np.nan
+
+            if "PRECIP_CHIRPS_MM" in g.columns:
+                precip = pd.to_numeric(g["PRECIP_CHIRPS_MM"], errors="coerce")
+                row["Precipitação Total (mm)"] = float(precip.sum(skipna=True)) if precip.notna().any() else np.nan
+                row["Precipitação Média Ponderada (mm)"] = weighted_mean(g["PRECIP_CHIRPS_MM"], g["AREA_PRODU"])
+                row["Precipitação Máxima (mm)"] = float(precip.max(skipna=True)) if precip.notna().any() else np.nan
+                row["Precipitação Mínima (mm)"] = float(precip.min(skipna=True)) if precip.notna().any() else np.nan
+
+            if "TEMP_MEDIA_C" in g.columns:
+                row["Média Temp Ponderada (°C)"] = weighted_mean(g["TEMP_MEDIA_C"], g["AREA_PRODU"])
+
+            if "TEMP_MIN_C" in g.columns:
+                tmin = pd.to_numeric(g["TEMP_MIN_C"], errors="coerce")
+                row["Temp Mínima (°C)"] = float(tmin.min(skipna=True)) if tmin.notna().any() else np.nan
+
+            if "TEMP_MAX_C" in g.columns:
+                tmax = pd.to_numeric(g["TEMP_MAX_C"], errors="coerce")
+                row["Temp Máxima (°C)"] = float(tmax.max(skipna=True)) if tmax.notna().any() else np.nan
+
+            if "AMPLITUDE_TERMICA_C" in g.columns:
+                row["Amplitude Térmica Ponderada (°C)"] = weighted_mean(g["AMPLITUDE_TERMICA_C"], g["AREA_PRODU"])
+
+            if "UMID_MEDIA_PCT" in g.columns:
+                row["Umidade Média Ponderada (%)"] = weighted_mean(g["UMID_MEDIA_PCT"], g["AREA_PRODU"])
+
+            if "DIAS_SEM_CHUVA" in g.columns:
+                dias_sem = pd.to_numeric(g["DIAS_SEM_CHUVA"], errors="coerce")
+                row["Dias sem Chuva"] = float(dias_sem.max(skipna=True)) if dias_sem.notna().any() else np.nan
+
+            rows.append(row)
+
+        out = pd.DataFrame(rows)
+
+        if not out.empty:
+            out = out.sort_values(["ANO", "MES_NUM"]).copy()
+
+            for col in [
+                "AREA_PRODU",
+                "Precipitação Total (mm)",
+                "Precipitação Média Ponderada (mm)",
+                "Precipitação Máxima (mm)",
+                "Precipitação Mínima (mm)",
+                "Média Temp Ponderada (°C)",
+                "Temp Mínima (°C)",
+                "Temp Máxima (°C)",
+                "Amplitude Térmica Ponderada (°C)",
+                "Umidade Média Ponderada (%))",
+                "Dias sem Chuva",
+            ]:
+                if col in out.columns:
+                    out[col] = pd.to_numeric(out[col], errors="coerce").round(2)
+
+        return out
+
+    # =====================================================
+    # 5) RESUMO ANUAL
+    # =====================================================
+    def resumo_anual_from_resumo_mensal(resumo_mes: pd.DataFrame) -> pd.DataFrame:
+        if resumo_mes is None or resumo_mes.empty:
+            return pd.DataFrame()
+
+        rows = []
+
+        for ano, g in resumo_mes.groupby("ANO", dropna=False):
+            row = {"ANO": int(ano) if pd.notna(ano) else np.nan}
+
+            if "AREA_PRODU" in g.columns:
+                area = pd.to_numeric(g["AREA_PRODU"], errors="coerce")
+                row["AREA_PRODU"] = float(area.mean(skipna=True)) if area.notna().any() else np.nan
+
+            if "Precipitação Total (mm)" in g.columns:
+                precip_total_mes = pd.to_numeric(g["Precipitação Total (mm)"], errors="coerce")
+                row["Precipitação Total (mm)"] = float(precip_total_mes.sum(skipna=True)) if precip_total_mes.notna().any() else np.nan
+
+            if all(c in g.columns for c in ["Precipitação Média Ponderada (mm)", "AREA_PRODU"]):
+                row["Precipitação Média Ponderada (mm)"] = weighted_mean(
+                    g["Precipitação Média Ponderada (mm)"], g["AREA_PRODU"]
+                )
+
+            if "Precipitação Máxima (mm)" in g.columns:
+                pmax = pd.to_numeric(g["Precipitação Máxima (mm)"], errors="coerce")
+                row["Precipitação Máxima (mm)"] = float(pmax.max(skipna=True)) if pmax.notna().any() else np.nan
+
+            if "Precipitação Mínima (mm)" in g.columns:
+                pmin = pd.to_numeric(g["Precipitação Mínima (mm)"], errors="coerce")
+                row["Precipitação Mínima (mm)"] = float(pmin.min(skipna=True)) if pmin.notna().any() else np.nan
+
+            if all(c in g.columns for c in ["Média Temp Ponderada (°C)", "AREA_PRODU"]):
+                row["Média Temp Ponderada (°C)"] = weighted_mean(
+                    g["Média Temp Ponderada (°C)"], g["AREA_PRODU"]
+                )
+
+            if "Temp Mínima (°C)" in g.columns:
+                tmin = pd.to_numeric(g["Temp Mínima (°C)"], errors="coerce")
+                row["Temp Mínima (°C)"] = float(tmin.min(skipna=True)) if tmin.notna().any() else np.nan
+
+            if "Temp Máxima (°C)" in g.columns:
+                tmax = pd.to_numeric(g["Temp Máxima (°C)"], errors="coerce")
+                row["Temp Máxima (°C)"] = float(tmax.max(skipna=True)) if tmax.notna().any() else np.nan
+
+            if all(c in g.columns for c in ["Amplitude Térmica Ponderada (°C)", "AREA_PRODU"]):
+                row["Amplitude Térmica Ponderada (°C)"] = weighted_mean(
+                    g["Amplitude Térmica Ponderada (°C)"], g["AREA_PRODU"]
+                )
+
+            if all(c in g.columns for c in ["Umidade Média Ponderada (%)", "AREA_PRODU"]):
+                row["Umidade Média Ponderada (%)"] = weighted_mean(
+                    g["Umidade Média Ponderada (%)"], g["AREA_PRODU"]
+                )
+
+            if "Dias sem Chuva" in g.columns:
+                dias_sem = pd.to_numeric(g["Dias sem Chuva"], errors="coerce")
+                row["Dias sem Chuva"] = float(dias_sem.max(skipna=True)) if dias_sem.notna().any() else np.nan
+
+            rows.append(row)
+
+        out = pd.DataFrame(rows)
+
+        if not out.empty:
+            out = out.sort_values("ANO").copy()
+            for col in out.columns:
+                if col != "ANO":
+                    out[col] = pd.to_numeric(out[col], errors="coerce").round(2)
+
+        return out
+
+    resumo_mes = resumo_mensal_from_df(df)
+    resumo_ano = resumo_anual_from_resumo_mensal(resumo_mes)
+
+    # =====================================================
+    # 6) RESUMO EXECUTIVO
+    # =====================================================
+    st.markdown("---")
+    st.markdown('<div class="section-title">Resumo Executivo</div>', unsafe_allow_html=True)
+    st.caption(f"Filtro: {filtro_desc} | Período: {periodo_desc}")
+
+    area_total = np.nan
+    num_fazendas = 0
+    num_empresas = 0
+    num_registros = len(df)
+
+    try:
+        if "AREA_PRODU" in df.columns and "FAZENDA" in df.columns:
+            area_total = float(df.groupby("FAZENDA", dropna=False)["AREA_PRODU"].first().sum(skipna=True))
+        if "FAZENDA" in df.columns:
+            num_fazendas = int(df["FAZENDA"].dropna().nunique())
+        if "EMPRESA" in df.columns:
+            num_empresas = int(df["EMPRESA"].dropna().nunique())
+    except Exception:
+        pass
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Área analisada (ha)", f"{area_total:.1f}" if pd.notna(area_total) else "N/A")
+    c2.metric("Fazendas", str(num_fazendas))
+    c3.metric("Empresas", str(num_empresas))
+    c4.metric("Registros", f"{num_registros:,}".replace(",", "."))
+
+    # =====================================================
+    # 7) PAINEL DE MÉTRICAS
+    # =====================================================
+    st.markdown("---")
+    st.markdown('<div class="section-title">Painel de Métricas</div>', unsafe_allow_html=True)
+    st.caption(f"Filtro: {filtro_desc} | Período: {periodo_desc}")
+
+    precip_total_periodo = np.nan
+    precip_media_anual = np.nan
+    precip_media_mensal = np.nan
+    precip_maxima = np.nan
+
+    if not resumo_ano.empty and "Precipitação Total (mm)" in resumo_ano.columns:
+        serie_total_anual = pd.to_numeric(resumo_ano["Precipitação Total (mm)"], errors="coerce")
+        if serie_total_anual.notna().any():
+            precip_total_periodo = float(serie_total_anual.sum(skipna=True))
+            precip_media_anual = float(serie_total_anual.mean(skipna=True))
+
+    if not resumo_mes.empty and "Precipitação Média Ponderada (mm)" in resumo_mes.columns:
+        serie_media = pd.to_numeric(resumo_mes["Precipitação Média Ponderada (mm)"], errors="coerce")
+        if serie_media.notna().any():
+            precip_maxima = float(serie_media.max(skipna=True))
+
+    if not resumo_mes.empty and all(c in resumo_mes.columns for c in ["Precipitação Média Ponderada (mm)", "AREA_PRODU"]):
+        precip_media_mensal = weighted_mean(
+            resumo_mes["Precipitação Média Ponderada (mm)"],
+            resumo_mes["AREA_PRODU"]
+        )
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Precipitação Total Ponderada (mm)", f"{precip_total_periodo:.2f}" if pd.notna(precip_total_periodo) else "N/A")
+    m2.metric("Precipitação Média Anual (mm)", f"{precip_media_anual:.2f}" if pd.notna(precip_media_anual) else "N/A")
+    m3.metric("Precipitação Média Mensal (mm)", f"{precip_media_mensal:.2f}" if pd.notna(precip_media_mensal) else "N/A")
+    m4.metric("Precipitação Máxima (mm)", f"{precip_maxima:.2f}" if pd.notna(precip_maxima) else "N/A")
+
+    # =====================================================
+    # 8) TABELA RESUMO POR ANO
+    # =====================================================
+    st.markdown("---")
+    st.markdown('<div class="section-title">Tabela — Resumo por ANO</div>', unsafe_allow_html=True)
+    st.caption(f"Filtro: {filtro_desc} | Período: {periodo_desc}")
+
+    if not resumo_ano.empty:
+        ordem_ano = [
+            "ANO", "AREA_PRODU", "Precipitação Total (mm)", "Precipitação Média Ponderada (mm)",
+            "Precipitação Máxima (mm)", "Precipitação Mínima (mm)", "Média Temp Ponderada (°C)",
+            "Temp Mínima (°C)", "Temp Máxima (°C)", "Amplitude Térmica Ponderada (°C)",
+            "Umidade Média Ponderada (%)", "Dias sem Chuva",
+        ]
+        resumo_ano_exibir = resumo_ano[[c for c in ordem_ano if c in resumo_ano.columns]].copy()
+
+        st.dataframe(resumo_ano_exibir, use_container_width=True, height=260)
+
+        excel_bytes_ano = df_to_excel_bytes(resumo_ano_exibir, "Resumo_Ano")
+        st.download_button(
+            label="⬇️ Baixar Resumo por ANO (.xlsx)",
+            data=excel_bytes_ano,
+            file_name="resumo_ano.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_resumo_ano",
+        )
+    else:
+        st.warning("⚠️ Não foi possível gerar o resumo por ano.")
+
+    # =====================================================
+    # 9) TABELA RESUMO POR MÊS
+    # =====================================================
+    st.markdown("---")
+    st.markdown('<div class="section-title">Tabela — Resumo por Mês</div>', unsafe_allow_html=True)
+    st.caption(f"Filtro: {filtro_desc} | Período: {periodo_desc}")
+
+    if "mostrar_tudo_resumo_mes" not in st.session_state:
+        st.session_state["mostrar_tudo_resumo_mes"] = False
+
+    if not resumo_mes.empty:
+        ordem_mes = [
+            "MES_ANO", "ANO", "MES", "AREA_PRODU",
+            "Precipitação Total (mm)", "Precipitação Média Ponderada (mm)", "Precipitação Máxima (mm)",
+            "Precipitação Mínima (mm)", "Média Temp Ponderada (°C)",
+            "Temp Mínima (°C)", "Temp Máxima (°C)", "Amplitude Térmica Ponderada (°C)",
+            "Umidade Média Ponderada (%)", "Dias sem Chuva",
+        ]
+        resumo_mes_exibir = resumo_mes[[c for c in ordem_mes if c in resumo_mes.columns]].copy()
+
+        excel_bytes_mes = df_to_excel_bytes(resumo_mes_exibir, "Resumo_Mes")
+        st.download_button(
+            label="⬇️ Baixar Resumo por MÊS (.xlsx)",
+            data=excel_bytes_mes,
+            file_name="resumo_mes.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_resumo_mes",
+        )
+
+        st.info("Foram exibidos somente os 5 primeiros itens da tabela mensal.")
+
+        if st.button("Exibir tudo", key="btn_exibir_tudo_resumo_mes"):
+            st.session_state["mostrar_tudo_resumo_mes"] = True
+
+        if st.session_state["mostrar_tudo_resumo_mes"]:
+            st.dataframe(resumo_mes_exibir, use_container_width=True, height=420)
+            st.caption(f"Total de registros: {len(resumo_mes_exibir)}")
+        else:
+            st.dataframe(resumo_mes_exibir.head(5), use_container_width=True, height=220)
+            st.caption(f"Mostrando 5 de {len(resumo_mes_exibir)} registros.")
+    else:
+        st.warning("⚠️ Não foi possível gerar o resumo por mês.")
+
+    # =====================================================
+    # 10) COMPARATIVO ENTRE ANOS
+    # =====================================================
+    st.markdown("---")
+    st.markdown('<div class="section-title">Tabela Comparativo entre anos</div>', unsafe_allow_html=True)
+    st.caption(f"Filtro: {filtro_desc} | Período: {periodo_desc}")
+
+    comparativo_ano_exibir = pd.DataFrame()
+
+    if not resumo_ano.empty and "Precipitação Total (mm)" in resumo_ano.columns:
+        comparativo_ano = resumo_ano.copy()
+        comparativo_ano["Precipitação Total (mm)"] = pd.to_numeric(
+            comparativo_ano["Precipitação Total (mm)"], errors="coerce"
+        )
+        comparativo_ano = comparativo_ano.sort_values("ANO").copy()
+        comparativo_ano["Variação da Precipitação (%)"] = (
+            comparativo_ano["Precipitação Total (mm)"].pct_change() * 100
+        ).round(2)
+
+        ordem_comp = ["ANO", "Precipitação Total (mm)", "Variação da Precipitação (%)"]
+        comparativo_ano_exibir = comparativo_ano[[c for c in ordem_comp if c in comparativo_ano.columns]]
+
+        st.dataframe(comparativo_ano_exibir, use_container_width=True, height=220)
+    else:
+        st.info("Sem dados suficientes para o comparativo entre anos.")
+
+    # =====================================================
+    # 11) GRÁFICOS
+    # =====================================================
+    st.markdown("---")
+    st.markdown('<div class="section-title">Gráficos</div>', unsafe_allow_html=True)
+    st.caption(f"Filtro: {filtro_desc} | Período: {periodo_desc}")
+
+    grafico_mes_base = resumo_mes.copy() if not resumo_mes.empty else pd.DataFrame()
+    if not grafico_mes_base.empty:
+        grafico_mes_base["X_LABEL"] = grafico_mes_base["MES_ANO"].astype(str)
+
+    grafico_ano_base = resumo_ano.copy() if not resumo_ano.empty else pd.DataFrame()
+    if not grafico_ano_base.empty:
+        grafico_ano_base["X_LABEL"] = grafico_ano_base["ANO"].astype(str)
+
+    def plot_grafico_barras(col_mes: str, col_ano: str, titulo: str, checkbox_key: str, y_axis_title: str):
+        fonte_mes = not grafico_mes_base.empty and col_mes in grafico_mes_base.columns
+        fonte_ano = not grafico_ano_base.empty and col_ano in grafico_ano_base.columns
+
+        if not fonte_mes and not fonte_ano:
+            st.info(f"Sem dados para exibir o gráfico {titulo}.")
+            return
+
+        st.markdown(f"**{titulo}**")
+        resumir_por_ano = st.checkbox(
+            f"Resumir {titulo} por ANO",
+            value=False,
+            key=checkbox_key,
+        )
+
+        if not resumir_por_ano and fonte_mes:
+            base_plot = grafico_mes_base.copy()
+            x_col = "X_LABEL"
+            y_col = col_mes
+            x_title = "Mês"
+        elif resumir_por_ano and fonte_ano:
+            base_plot = grafico_ano_base.copy()
+            x_col = "X_LABEL"
+            y_col = col_ano
+            x_title = "Ano"
+        elif fonte_ano:
+            base_plot = grafico_ano_base.copy()
+            x_col = "X_LABEL"
+            y_col = col_ano
+            x_title = "Ano"
+        else:
+            base_plot = grafico_mes_base.copy()
+            x_col = "X_LABEL"
+            y_col = col_mes
+            x_title = "Mês"
+
+        base_plot = base_plot.dropna(subset=[y_col]).copy()
+        if base_plot.empty:
+            st.info(f"Sem dados válidos para exibir o gráfico {titulo}.")
+            return
+
+        fig = px.bar(
+            base_plot,
+            x=x_col,
+            y=y_col,
+            title=titulo_grafico(titulo),
+        )
+        fig.update_layout(
+            xaxis_title=x_title,
+            yaxis_title=y_axis_title,
+            bargap=0.20,
+        )
+        fig.update_xaxes(type="category")
+        st.plotly_chart(fig, use_container_width=True)
+
+    plot_grafico_barras("Precipitação Total (mm)", "Precipitação Total (mm)", "Precipitação Total", "chk_precip_total", "Precipitação Total (mm)")
+    plot_grafico_barras("Precipitação Média Ponderada (mm)", "Precipitação Média Ponderada (mm)", "Precipitação Média Ponderada", "chk_precip_media", "Precipitação Média Ponderada (mm)")
+    plot_grafico_barras("Precipitação Máxima (mm)", "Precipitação Máxima (mm)", "Precipitação Máxima", "chk_precip_max", "Precipitação Máxima (mm)")
+    plot_grafico_barras("Média Temp Ponderada (°C)", "Média Temp Ponderada (°C)", "Média Temp Ponderada", "chk_temp_media", "Média Temp Ponderada (°C)")
+    plot_grafico_barras("Temp Mínima (°C)", "Temp Mínima (°C)", "Temp Mínima", "chk_temp_min", "Temp Mínima (°C)")
+    plot_grafico_barras("Temp Máxima (°C)", "Temp Máxima (°C)", "Temp Máxima", "chk_temp_max", "Temp Máxima (°C)")
+    plot_grafico_barras("Umidade Média Ponderada (%)", "Umidade Média Ponderada (%)", "Umidade Média Ponderada", "chk_umidade", "Umidade Média Ponderada (%)")
+    plot_grafico_barras("Precipitação Mínima (mm)", "Precipitação Mínima (mm)", "Precipitação Mínima", "chk_precip_min", "Precipitação Mínima (mm)")
+
+    # =====================================================
+    # 12) VARIAÇÃO ENTRE ANOS
+    # =====================================================
+    st.markdown("---")
+    st.markdown('<div class="section-title">Gráfico variação de Precipitação entre Anos</div>', unsafe_allow_html=True)
+    st.caption(f"Filtro: {filtro_desc} | Período: {periodo_desc}")
+
+    if not comparativo_ano_exibir.empty and "Variação da Precipitação (%)" in comparativo_ano_exibir.columns:
+        fig_comp = px.bar(
+            comparativo_ano_exibir.dropna(subset=["Variação da Precipitação (%)"]),
+            x="ANO",
+            y="Variação da Precipitação (%)",
+            title=f"Variação de Precipitação entre Anos | {tipo_dado} | {filtro_desc} | Período: {periodo_desc}"
+        )
+        fig_comp.update_layout(
+            xaxis_title="Ano",
+            yaxis_title="Variação da Precipitação (%)",
+            bargap=0.20,
+        )
+        fig_comp.update_xaxes(type="category")
+        st.plotly_chart(fig_comp, use_container_width=True)
+    else:
+        st.info("Sem dados suficientes para o gráfico de variação entre anos.")
+
+    # =====================================================
+    # 13) CONTEXTO
+    # =====================================================
+    st.markdown("---")
+    with st.expander("ℹ️ Contexto do filtro aplicado", expanded=False):
+        a1, a2, a3, a4 = st.columns(4)
+        a1.metric("Tipo de dado", tipo_dado if tipo_dado else "-")
+        a2.metric("Data inicial", str(start_date) if start_date else "-")
+        a3.metric("Data final", str(end_date) if end_date else "-")
+        a4.metric("Registros", str(len(df_csv)))
+
+        b1, b2, b3, b4 = st.columns(4)
+        b1.write(f"**UF:** {selected_uf if selected_uf else '—'}")
+        b2.write(f"**Município:** {selected_municipio if selected_municipio else '—'}")
+        b3.write(f"**Empresa:** {selected_empresa if selected_empresa else '—'}")
+        b4.write(f"**Fazenda:** {selected_fazenda if selected_fazenda else '—'}")
+
+
+
+from __future__ import annotations
+
+from typing import Dict, List
+
+import numpy as np
+import pandas as pd
+
+
+ALIASES = {
+    "Data": "DATA",
+    "data": "DATA",
+    "Empresa": "EMPRESA",
+    "Fazenda": "FAZENDA",
+    "Município": "MUNICIPIO",
+    "Municipio": "MUNICIPIO",
+    "AREA_PORDUT": "AREA_PRODU",
+    "AREA_PRODUT": "AREA_PRODU",
+    "AREA_PRODUTIVA": "AREA_PRODU",
+    "PRECIP": "PRECIP_CHIRPS_MM",
+    "PRECIP_MM": "PRECIP_CHIRPS_MM",
+    "TEMP_MEDIA": "TEMP_MEDIA_C",
+    "UMID_MEDIA": "UMID_MEDIA_PCT",
+}
+
+NUMERIC_CANDIDATES = [
+    "AREA_PRODU",
+    "AREA_T",
+    "PRECIP_CHIRPS_MM",
+    "TEMP_MEDIA_C",
+    "TEMP_MIN_C",
+    "TEMP_MAX_C",
+    "AMPLITUDE_TERMICA_C",
+    "UMID_MEDIA_PCT",
+    "UMID_MIN_PCT",
+    "DIAS_SEM_CHUVA",
+    "INDICE_RISCO_INCENDIO",
+    "DEFICIT_HIDRICO_MM",
+    "INDICE_SECA",
+    "RISCO_ESTRESSE_HIDRICO",
+    "NOITES_FRIAS_Eucalipto_<15C",
+    "NOITES_FRIAS_Pinus_<5C",
+    "ONDAS_CALOR_Eucalipto_>35C",
+]
+
+
+def normalize_analysis_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Padroniza colunas, datas e números para uso na aba de análise."""
+    out = df.copy()
+    out.columns = [str(c).strip() for c in out.columns]
+    out = out.rename(columns={k: v for k, v in ALIASES.items() if k in out.columns})
+
+    if "DATA" in out.columns:
+        out["DATA"] = pd.to_datetime(out["DATA"], errors="coerce")
+        out = out.dropna(subset=["DATA"]).copy()
+
+    for col in NUMERIC_CANDIDATES:
+        if col in out.columns:
+            out[col] = coerce_numeric_br(out[col])
+
+    return out
+
+
+def coerce_numeric_br(series: pd.Series) -> pd.Series:
+    """Converte texto numérico BR/EN para float de forma robusta."""
+    x = series.astype(str).str.strip()
+    x = x.replace({"None": "", "nan": "", "NaN": "", "N/A": "", "-": "", "": np.nan})
+    x = x.str.replace(r"[^0-9,\.\-]+", "", regex=True)
+
+    has_dot = x.str.contains(r"\.", na=False)
+    has_comma = x.str.contains(r",", na=False)
+    both = has_dot & has_comma
+
+    x.loc[both] = x.loc[both].str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+    only_comma = has_comma & ~has_dot
+    x.loc[only_comma] = x.loc[only_comma].str.replace(",", ".", regex=False)
+
+    return pd.to_numeric(x, errors="coerce")
+
+
+def weighted_mean(values: pd.Series, weights: pd.Series) -> float:
+    v = pd.to_numeric(values, errors="coerce")
+    w = pd.to_numeric(weights, errors="coerce")
+    mask = v.notna() & w.notna() & (w > 0)
+    if mask.sum() == 0:
+        return float("nan")
+    return float((v[mask] * w[mask]).sum() / w[mask].sum())
+
+
+def resumo_por_fazenda(df: pd.DataFrame) -> pd.DataFrame:
+    """Replica a lógica-base do app de referência para resumo por fazenda."""
+    if df is None or df.empty or "FAZENDA" not in df.columns:
+        return pd.DataFrame()
+
+    df2 = df.copy()
+    for col in NUMERIC_CANDIDATES:
+        if col in df2.columns:
+            df2[col] = pd.to_numeric(df2[col], errors="coerce")
+
+    agg_dict: Dict[str, str] = {}
+    if "AREA_PRODU" in df2.columns:
+        agg_dict["AREA_PRODU"] = "first"
+    if "AREA_T" in df2.columns:
+        agg_dict["AREA_T"] = "first"
+    if "PRECIP_CHIRPS_MM" in df2.columns:
+        agg_dict["PRECIP_CHIRPS_MM"] = "sum"
+    if "TEMP_MEDIA_C" in df2.columns:
+        agg_dict["TEMP_MEDIA_C"] = "mean"
+    if "TEMP_MIN_C" in df2.columns:
+        agg_dict["TEMP_MIN_C"] = "min"
+    if "TEMP_MAX_C" in df2.columns:
+        agg_dict["TEMP_MAX_C"] = "max"
+    if "AMPLITUDE_TERMICA_C" in df2.columns:
+        agg_dict["AMPLITUDE_TERMICA_C"] = "mean"
+    if "UMID_MIN_PCT" in df2.columns:
+        agg_dict["UMID_MIN_PCT"] = "mean"
+    if "DIAS_SEM_CHUVA" in df2.columns:
+        agg_dict["DIAS_SEM_CHUVA"] = "max"
+    if "DEFICIT_HIDRICO_MM" in df2.columns:
+        agg_dict["DEFICIT_HIDRICO_MM"] = "sum"
+    if "INDICE_SECA" in df2.columns:
+        agg_dict["INDICE_SECA"] = "sum"
+    if "RISCO_ESTRESSE_HIDRICO" in df2.columns:
+        agg_dict["RISCO_ESTRESSE_HIDRICO"] = "mean"
+    if "NOITES_FRIAS_Eucalipto_<15C" in df2.columns:
+        agg_dict["NOITES_FRIAS_Eucalipto_<15C"] = "sum"
+    if "NOITES_FRIAS_Pinus_<5C" in df2.columns:
+        agg_dict["NOITES_FRIAS_Pinus_<5C"] = "sum"
+    if "ONDAS_CALOR_Eucalipto_>35C" in df2.columns:
+        agg_dict["ONDAS_CALOR_Eucalipto_>35C"] = "sum"
+    if "UMID_MEDIA_PCT" in df2.columns:
+        agg_dict["UMID_MEDIA_PCT"] = "mean"
+    if "INDICE_RISCO_INCENDIO" in df2.columns:
+        agg_dict["INDICE_RISCO_INCENDIO"] = "max"
+
+    if not agg_dict:
+        return pd.DataFrame()
+
+    res = df2.groupby("FAZENDA", dropna=False).agg(agg_dict).round(2)
+
+    rename_map = {
+        "PRECIP_CHIRPS_MM": "Soma Precipitação (mm)",
+        "TEMP_MEDIA_C": "Média Temp (°C)",
+        "TEMP_MIN_C": "Menor Temp Min (°C)",
+        "TEMP_MAX_C": "Maior Temp Max (°C)",
+        "AMPLITUDE_TERMICA_C": "Média Amplitude Térmica (°C)",
+        "UMID_MIN_PCT": "Média Umidade Min (%)",
+        "DIAS_SEM_CHUVA": "Máximo Dias Sem Chuva",
+        "DEFICIT_HIDRICO_MM": "Soma Déficit Hídrico (mm)",
+        "INDICE_SECA": "Soma Índice Seca",
+        "RISCO_ESTRESSE_HIDRICO": "Média Risco Estresse Hídrico",
+        "NOITES_FRIAS_Eucalipto_<15C": "Soma Noites Frias Eucalipto (<15C)",
+        "NOITES_FRIAS_Pinus_<5C": "Soma Noites Frias Pinus (<5C)",
+        "ONDAS_CALOR_Eucalipto_>35C": "Soma Ondas de Calor (>35C)",
+        "UMID_MEDIA_PCT": "Média Umidade (%)",
+        "INDICE_RISCO_INCENDIO": "Máximo Risco Incêndio",
+    }
+    res = res.rename(columns=rename_map)
+
+    preferred = [
+        "AREA_PRODU",
+        "AREA_T",
+        "Soma Precipitação (mm)",
+        "Média Temp (°C)",
+        "Menor Temp Min (°C)",
+        "Maior Temp Max (°C)",
+        "Média Amplitude Térmica (°C)",
+        "Média Umidade Min (%)",
+        "Máximo Dias Sem Chuva",
+        "Soma Déficit Hídrico (mm)",
+        "Soma Índice Seca",
+        "Média Risco Estresse Hídrico",
+        "Soma Noites Frias Eucalipto (<15C)",
+        "Soma Noites Frias Pinus (<5C)",
+        "Soma Ondas de Calor (>35C)",
+        "Média Umidade (%)",
+        "Máximo Risco Incêndio",
+    ]
+    cols_final = [c for c in preferred if c in res.columns] + [c for c in res.columns if c not in preferred]
+    return res[cols_final]
+
+
+def metricas_agregadas_caso_b(df: pd.DataFrame) -> Dict[str, object]:
+    """Replica o painel e séries do app de referência."""
+    out: Dict[str, object] = {
+        "precip_wp": np.nan,
+        "temp_mean": np.nan,
+        "umid_mean": np.nan,
+        "indice_risco_incendio_max": np.nan,
+        "deficit_hidrico_soma": np.nan,
+        "indice_seca_soma": np.nan,
+        "risco_estresse_hidrico_media": np.nan,
+        "noites_frias_eucalipto_soma": np.nan,
+        "noites_frias_pinus_soma": np.nan,
+        "serie_dias_sem_chuva_wp": pd.DataFrame(),
+        "serie_indice_risco_incendio": pd.DataFrame(),
+        "serie_risco_estresse_hidrico": pd.DataFrame(),
+    }
+
+    if df is None or df.empty:
+        return out
+
+    df2 = df.copy()
+    if "DATA" in df2.columns:
+        df2["DATA"] = pd.to_datetime(df2["DATA"], errors="coerce")
+
+    for col in NUMERIC_CANDIDATES:
+        if col in df2.columns:
+            df2[col] = pd.to_numeric(df2[col], errors="coerce")
+
+    if "TEMP_MEDIA_C" in df2.columns:
+        out["temp_mean"] = float(df2["TEMP_MEDIA_C"].mean(skipna=True))
+    if "UMID_MEDIA_PCT" in df2.columns:
+        out["umid_mean"] = float(df2["UMID_MEDIA_PCT"].mean(skipna=True))
+    if "INDICE_RISCO_INCENDIO" in df2.columns:
+        out["indice_risco_incendio_max"] = float(df2["INDICE_RISCO_INCENDIO"].max(skipna=True))
+    if "DEFICIT_HIDRICO_MM" in df2.columns:
+        out["deficit_hidrico_soma"] = float(df2["DEFICIT_HIDRICO_MM"].sum(skipna=True))
+    if "INDICE_SECA" in df2.columns:
+        out["indice_seca_soma"] = float(df2["INDICE_SECA"].sum(skipna=True))
+    if "RISCO_ESTRESSE_HIDRICO" in df2.columns:
+        out["risco_estresse_hidrico_media"] = float(df2["RISCO_ESTRESSE_HIDRICO"].mean(skipna=True))
+    if "NOITES_FRIAS_Eucalipto_<15C" in df2.columns:
+        out["noites_frias_eucalipto_soma"] = float(df2["NOITES_FRIAS_Eucalipto_<15C"].sum(skipna=True))
+    if "NOITES_FRIAS_Pinus_<5C" in df2.columns:
+        out["noites_frias_pinus_soma"] = float(df2["NOITES_FRIAS_Pinus_<5C"].sum(skipna=True))
+
+    if all(c in df2.columns for c in ["FAZENDA", "AREA_PRODU", "PRECIP_CHIRPS_MM"]):
+        areas = df2.groupby("FAZENDA")["AREA_PRODU"].first()
+        p_sum = df2.groupby("FAZENDA")["PRECIP_CHIRPS_MM"].sum(min_count=1)
+        tmp = pd.concat([areas.rename("A"), p_sum.rename("P")], axis=1).dropna()
+        tmp = tmp[tmp["A"] > 0]
+        if not tmp.empty:
+            out["precip_wp"] = float((tmp["P"] * tmp["A"]).sum() / tmp["A"].sum())
+
+    if all(c in df2.columns for c in ["DATA", "DIAS_SEM_CHUVA", "FAZENDA", "AREA_PRODU"]):
+        d3 = df2.dropna(subset=["DATA", "FAZENDA"]).copy()
+        area_map = d3.groupby("FAZENDA")["AREA_PRODU"].first()
+        d3["PESO_AREA"] = d3["FAZENDA"].map(area_map)
+        d3 = d3.dropna(subset=["PESO_AREA"])
+        d3 = d3[d3["PESO_AREA"] > 0]
+        if not d3.empty:
+            s = (
+                d3.groupby(d3["DATA"].dt.date)
+                .apply(lambda g: weighted_mean(g["DIAS_SEM_CHUVA"], g["PESO_AREA"]), include_groups=False)
+                .reset_index(name="DIAS_SEM_CHUVA_MEDIA_PONDERADA")
+            )
+            s["DATA"] = pd.to_datetime(s["DATA"])
+            out["serie_dias_sem_chuva_wp"] = s.sort_values("DATA")
+
+    if all(c in df2.columns for c in ["DATA", "INDICE_RISCO_INCENDIO"]):
+        d4 = df2.dropna(subset=["DATA", "INDICE_RISCO_INCENDIO"]).copy()
+        d4["DATA"] = pd.to_datetime(d4["DATA"])
+        s2 = d4.groupby(d4["DATA"].dt.date)["INDICE_RISCO_INCENDIO"].mean().reset_index(name="INDICE_RISCO_INCENDIO_MEDIA")
+        s2["DATA"] = pd.to_datetime(s2["DATA"])
+        out["serie_indice_risco_incendio"] = s2.sort_values("DATA")
+
+    if all(c in df2.columns for c in ["DATA", "RISCO_ESTRESSE_HIDRICO"]):
+        d5 = df2.dropna(subset=["DATA", "RISCO_ESTRESSE_HIDRICO"]).copy()
+        d5["DATA"] = pd.to_datetime(d5["DATA"])
+        s3 = d5.groupby(d5["DATA"].dt.date)["RISCO_ESTRESSE_HIDRICO"].mean().reset_index(name="RISCO_ESTRESSE_HIDRICO_MEDIA")
+        s3["DATA"] = pd.to_datetime(s3["DATA"])
+        out["serie_risco_estresse_hidrico"] = s3.sort_values("DATA")
+
+    return out
+
+
+def build_diagnostic_summary(df: pd.DataFrame, columns: List[str]) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    total = len(df)
+    for col in columns:
+        if col in df.columns:
+            out[col] = f"{int(df[col].notna().sum())} / {total}"
+    return out
+
+
+# -*- coding: utf-8 -*-
+"""
+app.py — Avant | Visualizador de Shapefile + Dados Climáticos
+Versão V2.1
+- Header SaaS
+- Logo estável
+- Autenticação opcional
+- Mapa modularizado
+- Geometria original preservada para exibição sem simplificação
+- Datas tratadas via services/date_service.py
+- Tabs modularizadas
+"""
+
+import io
+import os
+import logging
+from datetime import date
+from typing import Optional, List
+
+import pandas as pd
+import geopandas as gpd
+import requests
+import streamlit as st
+
+from core.styles import apply_styles
+from core.stylesHEADER import apply_stylesHEADER
+from config_urls import load_urls, get_url_by_year
+from core.settings import (
+    APP_TITLE,
+    APP_ICON,
+    LAYOUT,
+    SIDEBAR_STATE,
+    GEO_PATH,
+    LOGO_PATH,
+    AUTH_ENABLED,
+    TIPOS_DADO,
+)
+from components.header import render_header
+
+from services.date_service import parse_date_safe, enrich_date_columns
+
+from tabs.tab_mapa import render_tab_mapa
+from tabs.tab_shape import render_tab_shape
+from tabs.tab_clima import render_tab_clima
+from tabs.tab_analise import render_tab_analise
+
+
+
+# =====================================================================
+# LOGGING
+# =====================================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("app.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger(__name__)
+
+
+# =====================================================================
+# CONFIG
+# =====================================================================
+SIMPLIFICATION_TOLERANCE = 0.001
+
+MESES_DISPONIVEIS = {
+    "Jan": 1, "Fev": 2, "Mar": 3, "Abr": 4, "Mai": 5, "Jun": 6,
+    "Jul": 7, "Ago": 8, "Set": 9, "Out": 10, "Nov": 11, "Dez": 12
+}
+ANOS_DISPONIVEIS = list(range(2000, 2026))
+
+
+# =====================================================================
+# PAGE CONFIG
+# =====================================================================
+st.set_page_config(
+    page_title=APP_TITLE,
+    page_icon=APP_ICON,
+    layout=LAYOUT,
+    initial_sidebar_state=SIDEBAR_STATE,
+)
+
+apply_styles()
+apply_stylesHEADER()
+
+
+# =====================================================================
+# HELPERS
+# =====================================================================
+@st.cache_data(show_spinner=False)
+def load_shapefile_full(file_path: str) -> Optional[gpd.GeoDataFrame]:
+    logger.info("Carregando shapefile: %s", file_path)
+
+    if not os.path.exists(file_path):
+        logger.warning("Shapefile não encontrado: %s", file_path)
+        return None
+
+    try:
+        gdf = gpd.read_file(file_path)
+
+        if gdf.empty:
+            logger.warning("Shapefile carregado, porém vazio.")
+            return gdf
+
+        if gdf.crs is None:
+            gdf = gdf.set_crs("EPSG:4326")
+
+        if str(gdf.crs).upper() != "EPSG:4326":
+            gdf = gdf.to_crs("EPSG:4326")
+
+        # Guarda geometria original
+        gdf["__geometry_original__"] = gdf.geometry.copy()
+
+        try:
+            gdf["geometry"] = gdf.geometry.simplify(
+                SIMPLIFICATION_TOLERANCE,
+                preserve_topology=True,
+            )
+        except Exception as e:
+            logger.warning("Falha na simplificação do shapefile: %s", e)
+
+        return gdf
+
+    except Exception as e:
+        logger.error("Erro ao carregar shapefile: %s", e)
+        return None
+
+
+def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out.columns = [str(c).strip() for c in out.columns]
+
+    for c in out.columns:
+        if out[c].dtype == "object":
+            out[c] = out[c].astype(str).str.strip()
+
+    return out
+
+
+@st.cache_data(show_spinner=False)
+def load_csv_from_url_robust(url: str, year: int) -> Optional[pd.DataFrame]:
+    try:
+        url = str(url).strip().replace("\\", "/")
+        is_local_file = os.path.isfile(url)
+
+        if is_local_file:
+            with open(url, "rb") as f:
+                content = f.read()
+        else:
+            if "1drv.ms" in url and "download=1" not in url:
+                url = url + ("&download=1" if "?" in url else "?download=1")
+
+            response = requests.get(url, timeout=180)
+            response.raise_for_status()
+            content = response.content
+
+        for enc in ["utf-8", "utf-8-sig", "latin-1", "iso-8859-1", "cp1252"]:
+            try:
+                text = content.decode(enc)
+            except Exception:
+                continue
+
+            for sep in [";", ",", "\t", "|"]:
+                try:
+                    df = pd.read_csv(
+                        io.StringIO(text),
+                        sep=sep,
+                        engine="python",
+                        on_bad_lines="skip",
+                    )
+
+                    if df is None or df.empty:
+                        continue
+
+                    df.columns = [str(c).strip() for c in df.columns]
+                    if len(df.columns) <= 1:
+                        continue
+
+                    rename_map = {
+                        "Data": "DATA",
+                        "data": "DATA",
+                        "Empresa": "EMPRESA",
+                        "Fazenda": "FAZENDA",
+                        "Município": "MUNICIPIO",
+                        "Municipio": "MUNICIPIO",
+                        "AREA_PORDUT": "AREA_PRODU",
+                        "AREA_PRODUT": "AREA_PRODU",
+                        "AREA_PRODUTIVA": "AREA_PRODU",
+                    }
+                    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+
+                    if "DATA" in df.columns:
+                        df["DATA"] = parse_date_safe(df["DATA"])
+
+                    logger.info("CSV %s carregado com %d linhas", year, len(df))
+                    return df
+
+                except Exception as e:
+                    logger.error("Erro ao interpretar CSV do ano %s (enc=%s, sep=%r): %s", year, enc, sep, e)
+                    continue
+
+        logger.warning("Falha ao interpretar CSV do ano %s", year)
+        return None
+
+    except Exception as e:
+        logger.error("Erro ao carregar CSV %s: %s", year, e)
+        return None
+
+
+def get_years_in_range(start_date: date, end_date: date) -> List[int]:
+    if start_date is None or end_date is None:
+        return []
+    if end_date < start_date:
+        return []
+    return list(range(start_date.year, end_date.year + 1))
+
+
+def safe_unique(df: pd.DataFrame, col: str) -> List[str]:
+    if col not in df.columns:
+        return []
+    return sorted([str(x) for x in df[col].dropna().unique()])
+
+
+def filter_gdf(gdf: gpd.GeoDataFrame, filtro: dict) -> gpd.GeoDataFrame:
+    gdf_filtered = gdf.copy()
+    tipo = filtro["tipo_dado"]
+
+    if tipo == "Dados por Estado" and filtro["selected_uf"] and "UF" in gdf_filtered.columns:
+        gdf_filtered = gdf_filtered[gdf_filtered["UF"].astype(str) == str(filtro["selected_uf"])]
+
+    elif tipo == "Dados por Empresa" and filtro["selected_empresa"] and "EMPRESA" in gdf_filtered.columns:
+        gdf_filtered = gdf_filtered[gdf_filtered["EMPRESA"].astype(str) == str(filtro["selected_empresa"])]
+
+    elif (
+        tipo == "Dados Empresa/Fazenda"
+        and filtro["selected_empresa"]
+        and filtro["selected_fazenda"]
+        and all(c in gdf_filtered.columns for c in ["EMPRESA", "FAZENDA"])
+    ):
+        gdf_filtered = gdf_filtered[
+            (gdf_filtered["EMPRESA"].astype(str) == str(filtro["selected_empresa"])) &
+            (gdf_filtered["FAZENDA"].astype(str) == str(filtro["selected_fazenda"]))
+        ]
+
+    elif (
+        tipo == "Dados por Município"
+        and filtro["selected_uf"]
+        and filtro["selected_municipio"]
+        and all(c in gdf_filtered.columns for c in ["UF", "MUNICIPIO"])
+    ):
+        gdf_filtered = gdf_filtered[
+            (gdf_filtered["UF"].astype(str) == str(filtro["selected_uf"])) &
+            (gdf_filtered["MUNICIPIO"].astype(str) == str(filtro["selected_municipio"]))
+        ]
+
+    return gdf_filtered
+
+
+# =====================================================================
+# AUTH
+# =====================================================================
+name = None
+username = None
+role = None
+authentication_status = None
+authenticator = None
+
+auth_enabled = AUTH_ENABLED
+
+if auth_enabled:
+    try:
+        from auth import setup_authentication, get_user_role
+
+        authenticator, name, authentication_status, username = setup_authentication()
+
+        if authentication_status is False:
+            st.error("❌ Usuário/senha incorretos")
+            st.stop()
+        elif authentication_status is None:
+            st.warning("⚠️ Informe suas credenciais")
+            st.stop()
+
+        try:
+            role = get_user_role()
+        except Exception:
+            role = "Usuário"
+
+    except Exception as e:
+        logger.warning("Falha ao carregar autenticação: %s", e)
+        auth_enabled = False
+        name = "Usuário"
+        role = "Sem autenticação"
+else:
+    name = "Usuário"
+    role = "Acesso local"
+
+
+# =====================================================================
+# SESSION STATE
+# =====================================================================
+if "aplicar" not in st.session_state:
+    st.session_state.aplicar = False
+
+if "mostrar_tudo_shape" not in st.session_state:
+    st.session_state["mostrar_tudo_shape"] = False
+
+if "mostrar_tudo_clima" not in st.session_state:
+    st.session_state["mostrar_tudo_clima"] = False
+
+
+# =====================================================================
+# HEADER
+# =====================================================================
+render_header(
+    logo_path=LOGO_PATH,
+    app_name="Avant - Clima",
+    version="V2.1",
+    user=name,
+    role=role,
+)
+
+
+# =====================================================================
+# DADOS BASE
+# =====================================================================
+gdf_full = load_shapefile_full(GEO_PATH)
+if gdf_full is None:
+    st.error(f"Não foi possível carregar o shapefile em: {GEO_PATH}")
+    st.stop()
+
+
+# =====================================================================
+# SIDEBAR
+# =====================================================================
+tipo_dado = st.sidebar.selectbox("Tipo de Dado", TIPOS_DADO)
+
+selected_uf = None
+selected_empresa = None
+selected_fazenda = None
+selected_municipio = None
+
+if tipo_dado == "Dados por Estado":
+    ufs = safe_unique(gdf_full, "UF")
+    selected_uf = st.sidebar.selectbox("Selecione UF", ufs) if ufs else None
+
+elif tipo_dado == "Dados por Empresa":
+    empresas = safe_unique(gdf_full, "EMPRESA")
+    selected_empresa = st.sidebar.selectbox("Selecione Empresa", empresas) if empresas else None
+
+elif tipo_dado == "Dados Empresa/Fazenda":
+    empresas = safe_unique(gdf_full, "EMPRESA")
+    selected_empresa = st.sidebar.selectbox("Selecione Empresa", empresas) if empresas else None
+
+    if selected_empresa and "FAZENDA" in gdf_full.columns and "EMPRESA" in gdf_full.columns:
+        fazendas = safe_unique(
+            gdf_full[gdf_full["EMPRESA"].astype(str) == str(selected_empresa)],
+            "FAZENDA",
+        )
+        selected_fazenda = st.sidebar.selectbox("Selecione Fazenda", fazendas) if fazendas else None
+
+elif tipo_dado == "Dados por Município":
+    ufs = safe_unique(gdf_full, "UF")
+    selected_uf = st.sidebar.selectbox("Selecione UF", ufs) if ufs else None
+
+    if selected_uf and "MUNICIPIO" in gdf_full.columns and "UF" in gdf_full.columns:
+        municipios = safe_unique(
+            gdf_full[gdf_full["UF"].astype(str) == str(selected_uf)],
+            "MUNICIPIO",
+        )
+        selected_municipio = st.sidebar.selectbox("Selecione Município", municipios) if municipios else None
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Período mensal")
+
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    start_mes_nome = st.selectbox("Mês inicial", list(MESES_DISPONIVEIS.keys()), index=0)
+with col2:
+    start_ano = st.selectbox("Ano inicial", ANOS_DISPONIVEIS, index=ANOS_DISPONIVEIS.index(2025))
+
+col3, col4 = st.sidebar.columns(2)
+with col3:
+    end_mes_nome = st.selectbox("Mês final", list(MESES_DISPONIVEIS.keys()), index=11)
+with col4:
+    end_ano = st.selectbox("Ano final", ANOS_DISPONIVEIS, index=ANOS_DISPONIVEIS.index(2025))
+
+start_date = date(start_ano, MESES_DISPONIVEIS[start_mes_nome], 1)
+end_date = date(end_ano, MESES_DISPONIVEIS[end_mes_nome], 1)
+
+apply = st.sidebar.button("✅ Aplicar Filtros")
+log_container = st.sidebar.container() if apply else st.sidebar.empty()
+
+if apply:
+    st.session_state.aplicar = True
+    st.session_state["mostrar_tudo_shape"] = False
+    st.session_state["mostrar_tudo_clima"] = False
+
+
+# =====================================================================
+# FILTRO SHAPE
+# =====================================================================
+filtro = {
+    "tipo_dado": tipo_dado,
+    "selected_uf": selected_uf,
+    "selected_empresa": selected_empresa,
+    "selected_fazenda": selected_fazenda,
+    "selected_municipio": selected_municipio,
+}
+
+gdf_filtered = gdf_full.copy()
+if st.session_state.aplicar:
+    gdf_filtered = filter_gdf(gdf_full, filtro)
+
+
+# =====================================================================
+# LOAD CSV
+# =====================================================================
+df_csv = pd.DataFrame()
+
+if st.session_state.get("aplicar", False):
+    try:
+        urls = load_urls()
+        years = get_years_in_range(start_date, end_date)
+
+        if years:
+            with st.spinner(f"Carregando dados climáticos ({', '.join(map(str, years))})..."):
+                frames = []
+
+                for y in years:
+                    try:
+                        url = get_url_by_year(urls, y)
+
+                        if not url:
+                            log_container.warning(f"⚠️ Sem URL para o ano {y}")
+                            continue
+
+                        df_y = load_csv_from_url_robust(url, y)
+
+                        if df_y is None or df_y.empty:
+                            log_container.warning(f"⚠️ Ano {y} sem dados válidos")
+                            continue
+
+                        frames.append(df_y)
+                        log_container.success(f"✅ {y}: carregado")
+
+                    except Exception as e:
+                        logger.error("Erro ao ler CSV ano %s: %s", y, e)
+                        log_container.error(f"❌ Erro ao ler CSV do ano {y}: {e}")
+
+                if frames:
+                    df_csv = pd.concat(frames, ignore_index=True)
+
+        if df_csv is not None and not df_csv.empty:
+            df_csv = _normalize_columns(df_csv)
+
+            if "DATA" in df_csv.columns:
+                df_csv = enrich_date_columns(df_csv, "DATA")
+
+                start_period = pd.Period(start_date, freq="M")
+                end_period = pd.Period(end_date, freq="M")
+
+                df_csv["MES_ANO_PERIODO"] = df_csv["DATA"].dt.to_period("M")
+                df_csv = df_csv[
+                    (df_csv["MES_ANO_PERIODO"] >= start_period) &
+                    (df_csv["MES_ANO_PERIODO"] <= end_period)
+                ].copy()
+                df_csv.drop(columns=["MES_ANO_PERIODO"], inplace=True, errors="ignore")
+
+            if tipo_dado == "Dados por Estado" and selected_uf and "UF" in df_csv.columns:
+                df_csv = df_csv[df_csv["UF"].astype(str) == str(selected_uf)]
+
+            elif tipo_dado == "Dados por Empresa" and selected_empresa and "EMPRESA" in df_csv.columns:
+                df_csv = df_csv[df_csv["EMPRESA"].astype(str) == str(selected_empresa)]
+
+            elif (
+                tipo_dado == "Dados Empresa/Fazenda"
+                and selected_empresa and selected_fazenda
+                and all(c in df_csv.columns for c in ["EMPRESA", "FAZENDA"])
+            ):
+                df_csv = df_csv[
+                    (df_csv["EMPRESA"].astype(str) == str(selected_empresa)) &
+                    (df_csv["FAZENDA"].astype(str) == str(selected_fazenda))
+                ]
+
+            elif (
+                tipo_dado == "Dados por Município"
+                and selected_uf and selected_municipio
+                and all(c in df_csv.columns for c in ["UF", "MUNICIPIO"])
+            ):
+                df_csv = df_csv[
+                    (df_csv["UF"].astype(str) == str(selected_uf)) &
+                    (df_csv["MUNICIPIO"].astype(str) == str(selected_municipio))
+                ]
+
+            log_container.info(f"📦 Total final: {len(df_csv)} registros")
+        else:
+            log_container.warning("⚠️ Nenhum registro carregado.")
+
+    except Exception as e:
+        logger.error("Erro no carregamento dos CSVs: %s", e)
+        log_container.error(f"❌ Erro geral no carregamento: {e}")
+
+
+# =====================================================================
+# TABS
+# =====================================================================
+tab1, tab2, tab3, tab4 = st.tabs(
+    ["🗺️ Mapa Principal", "📋 Dados Shape", "📈 Dados de Clima", "📉 Análise Avançada"]
+)
+
+with tab1:
+    render_tab_mapa(gdf_full, gdf_filtered, filtro)
+
+with tab2:
+    render_tab_shape(gdf_filtered)
+
+with tab3:
+    # MArcos st.write(df_csv[["EMPRESA", "FAZENDA", "DATA", "AREA_T", "AREA_PRODU"]].head(20))
+    render_tab_clima(df_csv)
+
+with tab4:
+    render_tab_analise(
+        df_csv,
+        tipo_dado=tipo_dado,
+        selected_uf=selected_uf,
+        selected_municipio=selected_municipio,
+        selected_empresa=selected_empresa,
+        selected_fazenda=selected_fazenda,
+        start_date=start_date,
+        end_date=end_date,
+    )

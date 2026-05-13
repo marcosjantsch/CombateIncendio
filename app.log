@@ -1,0 +1,114 @@
+2026-04-23 11:10:42,468 - INFO - Carregando shapefile: C:\02\01ClimaV22\Data\Geo.shp
+2026-04-24 10:10:23,787 - INFO - Carregando shapefile: C:\02\01ClimaV22\Data\Geo.shp
+2026-04-24 10:10:27,261 - WARNING - Falha ao carregar autenticação: There are multiple elements with the same `key='init'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2026-04-24 10:10:52,080 - WARNING - Falha ao carregar autenticação: There are multiple elements with the same `key='init'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2026-04-24 10:11:05,084 - WARNING - Falha ao carregar autenticação: There are multiple elements with the same `key='init'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2026-04-24 10:17:40,119 - WARNING - Falha ao carregar autenticação: There are multiple elements with the same `key='init'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2026-04-24 10:17:44,358 - WARNING - Falha ao carregar autenticação: There are multiple elements with the same `key='init'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2026-04-24 10:17:52,129 - WARNING - Falha ao carregar autenticação: There are multiple elements with the same `key='init'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2026-04-24 10:18:14,667 - WARNING - Falha ao carregar autenticação: There are multiple elements with the same `key='init'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2026-04-24 10:18:15,106 - INFO - Carregando shapefile: C:\02\01ClimaV22\Data\Geo.shp
+2026-04-24 10:18:22,866 - WARNING - Falha ao carregar autenticação: There are multiple elements with the same `key='init'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2026-04-24 10:18:24,132 - WARNING - Falha ao carregar autenticação: There are multiple elements with the same `key='init'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2026-04-24 10:18:41,761 - WARNING - Falha ao carregar autenticação: There are multiple elements with the same `key='init'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2026-04-24 11:12:08,546 - INFO - Carregando shapefile: C:\02\01ClimaV22\Data\Geo.shp
+2026-04-24 11:18:11,352 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 11:18:11,389 - INFO - Ano 2026: arquivo lido como CSV (encoding=utf-8, separador=';') com 1224 linhas.
+2026-04-24 11:18:13,936 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 11:18:16,975 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 11:18:24,232 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 11:53:24,024 - INFO - Carregando shapefile: C:\02\01ClimaV22\Data\Geo.shp
+2026-04-24 11:55:42,142 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 11:55:42,175 - INFO - Ano 2026: arquivo lido como CSV (encoding=utf-8, separador=';') com 1224 linhas.
+2026-04-24 11:56:04,884 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 11:56:07,247 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 11:56:08,433 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 11:56:17,829 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 11:56:18,569 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 11:56:55,045 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 11:56:58,507 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 11:57:00,753 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 11:57:02,001 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:02:53,936 - ERROR - Task exception was never retrieved
+future: <Task finished name='Task-34403' coro=<WebSocketProtocol13.write_message.<locals>.wrapper() done, defined at C:\Users\marco\miniconda3\envs\Streamlit\Lib\site-packages\tornado\websocket.py:1111> exception=WebSocketClosedError()>
+Traceback (most recent call last):
+  File "C:\Users\marco\miniconda3\envs\Streamlit\Lib\site-packages\tornado\websocket.py", line 1113, in wrapper
+    await fut
+tornado.iostream.StreamClosedError: Stream is closed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\marco\miniconda3\envs\Streamlit\Lib\site-packages\tornado\websocket.py", line 1115, in wrapper
+    raise WebSocketClosedError()
+tornado.websocket.WebSocketClosedError
+2026-04-24 14:22:15,570 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:22:51,953 - INFO - Carregando shapefile: C:\02\01ClimaV22\Data\Geo.shp
+2026-04-24 14:23:19,933 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:23:19,962 - INFO - Ano 2026: arquivo lido como CSV (encoding=utf-8, separador=';') com 1224 linhas.
+2026-04-24 14:38:15,704 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:38:38,524 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:38:42,102 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:39:00,692 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:39:03,249 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:39:09,349 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:39:12,219 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:39:21,159 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:39:23,663 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:39:35,255 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:39:36,788 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:40:34,431 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:44:27,511 - INFO - Carregando shapefile: C:\02\01ClimaV22\Data\Geo.shp
+2026-04-24 14:44:46,469 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:44:46,492 - INFO - Ano 2026: arquivo lido como CSV (encoding=utf-8, separador=';') com 1224 linhas.
+2026-04-24 14:44:56,601 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:45:05,793 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:45:17,684 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:45:20,607 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:45:31,632 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:46:00,763 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:46:01,535 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:46:05,490 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:46:06,750 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:46:13,501 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:46:20,477 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:46:25,782 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:46:30,114 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:46:31,840 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:46:41,502 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:46:48,362 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:46:50,030 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:46:57,696 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:47:02,880 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 14:47:05,335 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 15:57:45,294 - INFO - Carregando shapefile: C:\02\01ClimaV22\Data\Geo.shp
+2026-04-24 15:58:08,000 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 15:58:08,034 - INFO - Ano 2026: arquivo lido como CSV (encoding=utf-8, separador=';') com 1224 linhas.
+2026-04-24 15:58:22,558 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 15:58:24,241 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 15:58:33,851 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:15:27,499 - INFO - Carregando shapefile: C:\02\01ClimaV22\Data\Geo.shp
+2026-04-24 16:15:32,220 - INFO - Carregando shapefile: C:\02\01ClimaV22\Data\Geo.shp
+2026-04-24 16:15:32,221 - INFO - Carregando shapefile: C:\02\01ClimaV22\Data\Geo.shp
+2026-04-24 16:16:00,414 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:16:00,429 - INFO - Ano 2026: arquivo lido como CSV (encoding=utf-8, separador=';') com 1224 linhas.
+2026-04-24 16:16:20,471 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:16:27,339 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:16:28,390 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:16:38,913 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:16:40,635 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:31:28,789 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:31:52,754 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:32:01,322 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:39:43,355 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:39:55,690 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:40:02,152 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:40:03,523 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:40:10,334 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:40:11,666 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:40:14,247 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:40:18,858 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:40:24,285 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:40:25,692 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:40:37,536 - INFO - URLs de CSV carregadas de config_urls.py.
+2026-04-24 16:40:41,262 - INFO - URLs de CSV carregadas de config_urls.py.
