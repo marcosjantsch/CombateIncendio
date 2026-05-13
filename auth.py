@@ -4,13 +4,15 @@ import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
 
+from core.settings import AUTH_CONFIG_PATH
+
 
 def load_config():
     try:
-        with open("config.yaml", "r", encoding="utf-8") as f:
+        with open(AUTH_CONFIG_PATH, "r", encoding="utf-8") as f:
             return yaml.load(f, Loader=SafeLoader)
     except FileNotFoundError:
-        st.error("config.yaml não encontrado. Copie config.yaml.example -> config.yaml e edite.")
+        st.error(f"Arquivo de autenticacao nao encontrado: {AUTH_CONFIG_PATH}")
         st.stop()
 
 
@@ -32,6 +34,7 @@ def get_auth_state():
         st.session_state.get("username"),
     )
 
+
 def setup_authentication(
     location="sidebar",
     fields=None,
@@ -40,7 +43,7 @@ def setup_authentication(
 ):
     authenticator = build_authenticator()
 
-    # Em versões novas, login pode retornar None e apenas preencher session_state
+    # Newer versions may return None and only populate session_state.
     try:
         if not allow_cookie_reauth and not st.session_state.get("authentication_status"):
             authenticator.cookie_controller.delete_cookie()
@@ -51,7 +54,7 @@ def setup_authentication(
             key=key,
         )
     except Exception as e:
-        raise RuntimeError(f"Falha ao inicializar autenticaÃ§Ã£o: {e}") from e
+        raise RuntimeError(f"Falha ao inicializar autenticacao: {e}") from e
 
     if isinstance(login_result, tuple) and len(login_result) == 3:
         name, authentication_status, username = login_result
@@ -59,6 +62,7 @@ def setup_authentication(
         name, authentication_status, username = get_auth_state()
 
     return authenticator, name, authentication_status, username
+
 
 def get_user_role():
     config = load_config()

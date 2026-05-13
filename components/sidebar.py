@@ -6,7 +6,14 @@ from datetime import date
 import streamlit as st
 from PIL import Image
 
-from core.settings import LOGO_PATH, TIPOS_DADO, ANOS_DISPONIVEIS, MESES_DISPONIVEIS
+from core.settings import (
+    APP_ENVIRONMENT_DISPLAY_NAME,
+    EE_PROJECT,
+    LOGO_PATH,
+    TIPOS_DADO,
+    ANOS_DISPONIVEIS,
+    MESES_DISPONIVEIS,
+)
 from services.log_service import export_logs_csv_bytes, get_log_download_filename
 
 
@@ -101,6 +108,7 @@ def render_sidebar(gdf_full):
                 '<div class="sidebar-brand-kicker">Painel de controle</div>'
                 '<div class="sidebar-brand-title">Selecione a opção</div>'
                 '<div class="sidebar-brand-subtitle">Filtros espaciais e período de análise</div>'
+                f'<div class="sidebar-env-pill">Ambiente: {APP_ENVIRONMENT_DISPLAY_NAME} | GE: {EE_PROJECT}</div>'
                 "</div>"
             ),
             unsafe_allow_html=True,

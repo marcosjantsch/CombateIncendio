@@ -1,0 +1,23 @@
+# Ambientes virtuais
+venv/
+.venv/
+
+# Config sensível
+config.yaml
+.streamlit/secrets.toml
+
+# Logs
+*.log
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# IDE
+.vscode/
+.idea/

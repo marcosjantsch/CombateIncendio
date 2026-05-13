@@ -6,7 +6,7 @@ import streamlit as st
 from PIL import Image
 
 from auth import build_authenticator, get_auth_state, setup_authentication
-from core.settings import LOGO_PATH
+from core.settings import APP_ENVIRONMENT_DISPLAY_NAME, EE_PROJECT, LOGO_PATH
 
 
 @st.cache_data(show_spinner=False)
@@ -313,7 +313,7 @@ def render_login_page():
                     <div class="avant-logo-wrap">
                         <img class="avant-logo" src="%s" alt="Avant" />
                     </div>
-                    <div class="avant-chip">Avant Platform</div>
+                    <div class="avant-chip">Ambiente: %s</div>
                 </div>
                 <div class="avant-title">Inteligência Climática Integrada</div>
                 <div class="avant-subtitle">
@@ -335,7 +335,7 @@ def render_login_page():
                     </div>
                 </div>
             </div>
-            """ % logo_src,
+            """ % (logo_src, APP_ENVIRONMENT_DISPLAY_NAME),
             unsafe_allow_html=True,
         )
 

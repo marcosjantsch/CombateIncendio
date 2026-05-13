@@ -77,6 +77,8 @@ def render_header(
     role: Optional[str] = None,
     username: Optional[str] = None,
     authenticator=None,
+    environment_label: Optional[str] = None,
+    ee_project: Optional[str] = None,
     subtitle: str = "Análise de Dados Climáticos",
 ) -> None:
     left, center, right = st.columns([3.1, 3.4, 3.5], vertical_alignment="center")
@@ -120,6 +122,10 @@ def render_header(
 
             with info_col:
                 items = []
+                if environment_label:
+                    items.append(_pill(f"Ambiente: {environment_label}"))
+                if ee_project:
+                    items.append(_pill(f"GE: {ee_project}"))
                 if user:
                     items.append(_pill(str(user), "👤"))
                 if role:

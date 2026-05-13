@@ -24,7 +24,13 @@ from core.theme import apply_locked_light_theme
 from core.styles import apply_styles
 from core.stylesHEADER import apply_stylesHEADER
 from core.settings import (
+    APP_ENVIRONMENT,
+    APP_ENVIRONMENT_DISPLAY_NAME,
     APP_ICON,
+    APP_NAME,
+    AUTH_CONFIG_PATH,
+    DEFAULT_EE_PROJECT,
+    EE_PROJECT,
     GEO_PATH,
     LOGO_PATH,
     AUTH_ENABLED,
@@ -73,18 +79,49 @@ SIMPLIFICATION_TOLERANCE = 0.001
 APP_VERSION = "V2.3"
 
 
+def log_environment_validation() -> None:
+    details = {
+        "APP_ENV": os.getenv("APP_ENV", ""),
+        "K_SERVICE": os.getenv("K_SERVICE", ""),
+        "APP_AUTH_CONFIG": AUTH_CONFIG_PATH,
+        "APP_GEO_PATH": os.getenv("APP_GEO_PATH", ""),
+        "GEO_PATH": GEO_PATH,
+        "EE_PROJECT_calculado": EE_PROJECT,
+        "EE_PROJECT_padrao": DEFAULT_EE_PROJECT,
+        "ambiente_detectado": APP_ENVIRONMENT,
+        "ambiente_exibido": APP_ENVIRONMENT_DISPLAY_NAME,
+        "auth_config_existe": os.path.exists(AUTH_CONFIG_PATH),
+        "geo_path_existe": os.path.exists(GEO_PATH),
+    }
+    logger.info(
+        "Ambiente detectado: %s | EE_PROJECT: %s | auth_config: %s | geo_path: %s",
+        APP_ENVIRONMENT,
+        EE_PROJECT,
+        AUTH_CONFIG_PATH,
+        GEO_PATH,
+    )
+    log_info_once(
+        "environment",
+        "validation",
+        "Ambiente e projeto Earth Engine validados",
+        details,
+        signature=details,
+    )
+
+
 # =====================================================================
 # PAGE CONFIG
 # =====================================================================
 st.set_page_config(
-    page_title="Avant",
+    page_title=APP_NAME,
     page_icon=APP_ICON,
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 apply_locked_light_theme()
-initialize_logs("Avant - Clima", APP_VERSION)
+initialize_logs(APP_NAME, APP_VERSION)
+log_environment_validation()
 
 
 # =====================================================================
@@ -875,12 +912,14 @@ if authentication_status:
 # =====================================================================
 render_header(
     logo_path=LOGO_PATH,
-    app_name="Avant - Clima",
+    app_name=APP_NAME,
     version=APP_VERSION,
     user=name,
     role=role,
     username=username,
     authenticator=authenticator,
+    environment_label=APP_ENVIRONMENT_DISPLAY_NAME,
+    ee_project=EE_PROJECT,
 )
 
 # =====================================================================
